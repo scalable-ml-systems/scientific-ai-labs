@@ -7,12 +7,18 @@ import torch
 from Bio.SeqUtils import seq1
 from transformers import AutoTokenizer, AutoModel
 
-from mavedb import get_reference_protein
-
+from scientific_ml.mavedb import get_reference_protein
 
 MODEL_NAME = "facebook/esm2_t6_8M_UR50D"
-CSV_PATH = Path(__file__).resolve().parent / "data/raw/cyp2c19_scores.csv"
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+CSV_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "raw"
+    / "cyp2c19_scores.csv"
+)
 
 def build_mutant_sequence(reference, mutation):
     pattern = r"p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2})"

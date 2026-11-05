@@ -8,7 +8,8 @@ urn = "urn:mavedb:00001199-a-1"
 
 url = f"https://api.mavedb.org/api/v1/score-sets/{urn}/scores"
 
-data_dir = Path("data/raw")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+data_dir = PROJECT_ROOT / "data" / "raw"
 data_dir.mkdir(parents=True, exist_ok=True)
 
 response = requests.get(url, timeout=60)
