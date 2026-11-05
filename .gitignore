@@ -1,3 +1,41 @@
+*.pem
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig
+kubeconfig.*
+
+# Python
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+**/.venv*/
+**/.venv-esm/
+.venv/
+
+# Ansible
+*.retry
+
+# Generated logs and temporary output
 *.log
+*.tmp
+tmp/
+.cache/
+
+# Large or generated evidence
+results/**/raw/
+results/**/*.tar.gz
+results/**/*.zip
+
+
+# macOS and editor files
 .DS_Store
+.vscode/
+.idea/
+

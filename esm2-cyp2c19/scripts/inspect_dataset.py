@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+import re
 
 urn = "urn:mavedb:00001199-a-1"
 
@@ -43,3 +44,38 @@ print("Missing protein annotations:",
 
 print("Missing experimental scores:",
       df["score"].isna().sum())
+
+mutation = df.iloc[0]["hgvs_pro"]
+
+pattern = r"p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2})"
+
+match = re.fullmatch(pattern, mutation)
+
+if match is None:
+    raise ValueError(f"Unsupported mutation: {mutation}")
+
+print("\n--- Mutation Parsing ---")
+print("Original:", mutation)
+print("Parsed parts:", match.groups())
+
+
+def parse_variant(mutation: str) -> tuple[str, int, str]:
+    pattern = r"p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2})"
+
+    match = re.fullmatch(pattern, mutation)
+
+    if match is None:
+        raise ValueError(f"Unsupported mutation: {mutation}")
+
+    original, position_text, replacement = match.groups()
+
+    position = int(position_text)
+    return original, position, replacement
+
+mutation = df.iloc[0]["hgvs_pro"]
+
+result = parse_variant(mutation)
+
+print("\n--- Parsed Variant ---")
+print("Result:", result)
+print("Position type:", type(result[1]))
