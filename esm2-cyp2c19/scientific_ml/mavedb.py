@@ -1,8 +1,9 @@
 
-import requests
 from io import StringIO
-from Bio.Seq import Seq
+
+import requests
 from Bio import SeqIO
+from Bio.Seq import Seq
 
 SCORE_SET = "urn:mavedb:00001199-a-1"
 MAVEDB_URL = f"https://api.mavedb.org/api/v1/score-sets/{SCORE_SET}"
@@ -24,8 +25,7 @@ def translate_target(dna: str) -> str:
     if "*" in protein[:-1]:
         raise ValueError("Internal stop codon detected")
 
-    if protein.endswith("*"):
-        protein = protein[:-1]
+    protein = protein.removesuffix("*")
 
     return protein
 

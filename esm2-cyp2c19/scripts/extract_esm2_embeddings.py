@@ -1,24 +1,25 @@
-
-from pathlib import Path
 import re
+from functools import partial
+from pathlib import Path
 
-import pandas as pd
 import torch
 from Bio.SeqUtils import seq1
-from transformers import AutoTokenizer, AutoModel
-
-from scientific_ml.mavedb import get_reference_protein
+from scientific_ml.cyp2c19_dataset import (
+    CYP2C19MissenseDataset,
+    collate_cyp2c19_variants,
+)
+from torch.utils.data import DataLoader
+from transformers import AutoModel, AutoTokenizer
 
 MODEL_NAME = "facebook/esm2_t6_8M_UR50D"
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-CSV_PATH = (
-    PROJECT_ROOT
-    / "data"
-    / "raw"
-    / "cyp2c19_scores.csv"
+VALIDATED_CSV_PATH = (
+    PROJECT_ROOT / "data" / "processed" / "cyp2c19_validated_missense.csv"
 )
+
+BATCH_SIZE = 8
+
 
 def build_mutant_sequence(reference, mutation):
     pattern = r"p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2})"
@@ -47,100 +48,114 @@ def build_mutant_sequence(reference, mutation):
     if reference[index] != original_aa:
         raise ValueError(f"Reference mismatch: {mutation}")
 
-    return reference[:index] + replacement_aa + reference[index + 1:]
+    return reference[:index] + replacement_aa + reference[index + 1 :]
 
 
 def main():
-    # 1. Load existing experimental data and reference protein
-    df = pd.read_csv(CSV_PATH)
-    reference = get_reference_protein()
+    # 1. Load the validated scientific dataset
+    variant_dataset = CYP2C19MissenseDataset(VALIDATED_CSV_PATH)
 
-    print("Dataset rows:", len(df))
-    print("Reference length:", len(reference))
+    print("Validated variants:", len(variant_dataset))
 
-    # 2. Select 10 supported real variants
-    selected = []
+    # 2. Load the pretrained tokenizer
+    esm2_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
-    for row in df.itertuples(index=False):
-        if pd.isna(row.hgvs_pro) or pd.isna(row.score):
-            continue
+    # 3. Construct the PyTorch DataLoader
+    variant_data_loader = DataLoader(
+        dataset=variant_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=0,
+        drop_last=False,
+        collate_fn=partial(
+            collate_cyp2c19_variants,
+            tokenizer=esm2_tokenizer,
+        ),
+    )
 
-        try:
-            sequence = build_mutant_sequence(reference, row.hgvs_pro)
-        except ValueError as error:
-            print("Skipped:", row.hgvs_pro, error)
-            continue
+    print("DataLoader batches:", len(variant_data_loader))
 
-        selected.append({
-            "id": row.accession,
-            "variant": row.hgvs_pro,
-            "score": row.score,
-            "sequence": sequence,
-        })
+    # 4. Inspect the entire DataLoader
+    processed_variant_ids = []
+    first_variant_batch = None
+    final_batch_size = 0
 
-        if len(selected) == 10:
-            break
+    for variant_batch in variant_data_loader:
+        batch_variant_ids = variant_batch["variant_ids"]
 
-    if len(selected) != 10:
-        raise RuntimeError("Could not find 10 valid variants")
+        processed_variant_ids.extend(batch_variant_ids)
+        final_batch_size = len(batch_variant_ids)
 
-    # 3. Load pretrained ESM-2
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModel.from_pretrained(
+        if first_variant_batch is None:
+            first_variant_batch = variant_batch
+
+    if processed_variant_ids != variant_dataset.variant_ids:
+        raise RuntimeError("DataLoader variant ordering or coverage mismatch")
+
+    print("Processed variants:", len(processed_variant_ids))
+    print("Final batch size:", final_batch_size)
+    print("Dataset coverage: PASS")
+
+    # 5. Inspect tensors from the first batch
+    print(
+        "Input IDs:",
+        tuple(first_variant_batch["input_ids"].shape),
+    )
+    print(
+        "Abundance scores:",
+        tuple(first_variant_batch["experimental_abundance_scores"].shape),
+    )
+
+    # 6. Execute ESM-2 on the first batch
+    esm2_model = AutoModel.from_pretrained(
         MODEL_NAME,
         add_pooling_layer=False,
     )
-    model.eval()
+    esm2_model.eval()
 
-    # 4. Convert protein sequences into model inputs
-    sequences = [item["sequence"] for item in selected]
-
-    batch = tokenizer(
-        sequences,
-        padding=True,
-        return_tensors="pt",
-        return_special_tokens_mask=True,
-    )
-
-    # 5. Execute model forward pass
     with torch.inference_mode():
-        outputs = model(
-            input_ids=batch["input_ids"],
-            attention_mask=batch["attention_mask"],
+        esm2_outputs = esm2_model(
+            input_ids=first_variant_batch["input_ids"],
+            attention_mask=first_variant_batch["attention_mask"],
         )
 
-        hidden_states = outputs.last_hidden_state
+        residue_hidden_states = esm2_outputs.last_hidden_state
 
-        # Exclude padding and ESM special tokens
-        valid_mask = (
-            batch["attention_mask"].bool()
-            & ~batch["special_tokens_mask"].bool()
+        valid_residue_mask = (
+            first_variant_batch["attention_mask"].bool()
+            & ~first_variant_batch["special_tokens_mask"].bool()
         )
 
-        assert valid_mask.sum(dim=1).tolist() == [
-            len(s) for s in sequences
-        ]
+        pooling_mask = valid_residue_mask.unsqueeze(-1).to(residue_hidden_states.dtype)
 
-        mask = valid_mask.unsqueeze(-1)
+        variant_embeddings = (residue_hidden_states * pooling_mask).sum(
+            dim=1
+        ) / pooling_mask.sum(dim=1)
 
-        embeddings = (hidden_states * mask).sum(dim=1)
-        embeddings = embeddings / mask.sum(dim=1)
+    # 7. Verify output shapes and numerical validity
+    if variant_embeddings.shape != (BATCH_SIZE, 320):
+        raise RuntimeError("Unexpected embedding shape")
 
-    # 6. Inspect results
-    print("\nHidden states:", tuple(hidden_states.shape))
-    print("Embeddings:", tuple(embeddings.shape))
-    print("All finite:", torch.isfinite(embeddings).all().item())
+    if not torch.isfinite(variant_embeddings).all():
+        raise RuntimeError("Non-finite embeddings detected")
 
-    for i, item in enumerate(selected):
-        print(
-            item["id"],
-            item["variant"],
-            "score:", round(item["score"], 4),
-            "sequence length:", len(item["sequence"]),
-            "embedding shape:", tuple(embeddings[i].shape),
-        )
+    print(
+        "Hidden states:",
+        tuple(residue_hidden_states.shape),
+    )
+    print(
+        "Embeddings:",
+        tuple(variant_embeddings.shape),
+    )
+    print("Embedding validation: PASS")
+
+    for variant_id, mutation, score in zip(
+        first_variant_batch["variant_ids"],
+        first_variant_batch["protein_mutations"],
+        first_variant_batch["experimental_abundance_scores"],
+    ):
+        print(variant_id, mutation, "score:", round(score.item(), 4))
 
 
 if __name__ == "__main__":
     main()
-

@@ -1,8 +1,8 @@
+import re
 from pathlib import Path
 
 import pandas as pd
 import requests
-import re
 
 urn = "urn:mavedb:00001199-a-1"
 
@@ -40,11 +40,9 @@ print("Replicate 3:", variant["score_rep3"])
 
 print("\n--- Data Completeness ---")
 
-print("Missing protein annotations:",
-      df["hgvs_pro"].isna().sum())
+print("Missing protein annotations:", df["hgvs_pro"].isna().sum())
 
-print("Missing experimental scores:",
-      df["score"].isna().sum())
+print("Missing experimental scores:", df["score"].isna().sum())
 
 mutation = df.iloc[0]["hgvs_pro"]
 
@@ -72,6 +70,7 @@ def parse_variant(mutation: str) -> tuple[str, int, str]:
 
     position = int(position_text)
     return original, position, replacement
+
 
 mutation = df.iloc[0]["hgvs_pro"]
 

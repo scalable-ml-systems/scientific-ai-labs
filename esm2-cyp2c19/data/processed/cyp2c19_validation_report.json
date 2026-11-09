@@ -1,0 +1,15 @@
+{
+  "dataset_accession": "urn:mavedb:00001199-a-1",
+  "raw_csv_sha256": "ddb05fcb6295648fa52ef458e1f7dd307d56f49b3c2eacd9f48019d5c348ef09",
+  "reference_protein_sha256": "7b6cfcfa50f9a9a5152dd688648fb19728833345fe619e1837946ea5df4987bb",
+  "reference_protein_length": 490,
+  "total_records": 8149,
+  "accepted": 7830,
+  "excluded": 319,
+  "invalid": 0,
+  "reason_counts": {
+    "nonsense_variant": 318,
+    "unsupported_variant_notation": 1
+  },
+  "rows_with_duplicate_protein_annotations": 0
+}
