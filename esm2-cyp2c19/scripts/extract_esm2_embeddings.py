@@ -119,6 +119,7 @@ def main():
             attention_mask=first_variant_batch["attention_mask"],
         )
 
+        #residue_hiddne_states contain vectors
         residue_hidden_states = esm2_outputs.last_hidden_state
 
         valid_residue_mask = (
