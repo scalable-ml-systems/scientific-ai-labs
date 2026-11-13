@@ -32,3 +32,8 @@ What we have not yet demonstrated
 - Scientific predictive value: ESM-2 generated embeddings, but we haven't established whether they contain enough information to predict experimental CYP2C19 abundance.
 - Model training: No prediction head, loss function, optimizer or training loop has been implemented.
 - Artifact persistence: Embeddings were generated and inspected, but not yet saved as reusable, versioned artifacts.
+
+### References 
+
+- Scientific sources: Boyle et al. (2024), Rubin et al. (2025), Lin et al. (2023), UniProt and HGVS.
+- Implementation references: MaveDB API, Hugging Face ESM and PyTorch documentation.
