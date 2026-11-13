@@ -1,9 +1,15 @@
-
 import argparse
+import csv
+import hashlib
+import json
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
+import numpy as np
 import torch
+import transformers
 from torch.utils.data import DataLoader, Subset
 from transformers import AutoModel, AutoTokenizer
 
@@ -12,8 +18,8 @@ from scientific_ml.cyp2c19_dataset import (
     collate_cyp2c19_variants,
 )
 
-
 MODEL_NAME = "facebook/esm2_t6_8M_UR50D"
+MODEL_REVISION = "c731040fcd8d73dceaa04b0a8e6329b345b0f5df"
 BATCH_SIZE = 8
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -185,6 +191,70 @@ def extract_esm2_embeddings(
         final_batch_size,
     )
 
+def sha256_file(file_path: Path) -> str:
+    return hashlib.sha256(file_path.read_bytes()).hexdigest()
+
+
+def save_embedding_artifacts(
+    output_dir: Path,
+    variant_ids: list[str],
+    abundance_scores: torch.Tensor,
+    variant_embeddings: torch.Tensor,
+    input_csv_sha256: str,
+    execution_device: torch.device,
+    batch_size: int,
+) -> None:
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    # Publish the directory only after all three files are written.
+    with TemporaryDirectory(dir=output_dir.parent) as temporary_dir:
+        staging_dir = Path(temporary_dir) / "artifacts"
+        staging_dir.mkdir()
+
+        embeddings_path = staging_dir / "cyp2c19_esm2_embeddings.npy"
+        metadata_path = staging_dir / "cyp2c19_embedding_metadata.csv"
+        manifest_path = staging_dir / "cyp2c19_embedding_manifest.json"
+
+        np.save(embeddings_path, variant_embeddings.numpy(), allow_pickle=False)
+
+        with metadata_path.open("w", newline="", encoding="utf-8") as metadata_file:
+            writer = csv.writer(metadata_file)
+            writer.writerow(["embedding_row", "variant_id", "experimental_abundance_score"])
+            for embedding_row, (variant_id, abundance_score) in enumerate(
+                zip(variant_ids, abundance_scores.tolist(), strict=True)
+            ):
+                writer.writerow([embedding_row, variant_id, abundance_score])
+
+        manifest = {
+            "created_at_utc": datetime.now(UTC).isoformat(),
+            "dataset_accession": "urn:mavedb:00001199-a-1",
+            "validated_csv_sha256": input_csv_sha256,
+            "model_id": MODEL_NAME,
+            "model_and_tokenizer_revision": MODEL_REVISION,
+            "pooling": "final_hidden_state_mean_over_residue_tokens",
+            "embedding_shape": list(variant_embeddings.shape),
+            "embedding_dtype": str(variant_embeddings.numpy().dtype),
+            "batch_size": batch_size,
+            "device": str(execution_device),
+            "gpu_name": (
+                torch.cuda.get_device_name(execution_device)
+                if execution_device.type == "cuda"
+                else None
+            ),
+            "pytorch_version": str(torch.__version__),
+            "pytorch_cuda_build": torch.version.cuda,
+            "transformers_version": transformers.__version__,
+            "artifact_sha256": {
+                embeddings_path.name: sha256_file(embeddings_path),
+                metadata_path.name: sha256_file(metadata_path),
+            },
+        }
+
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        staging_dir.rename(output_dir)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -200,11 +270,25 @@ def main():
         "--check-batch-consistency",
         action="store_true",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Save validated embeddings and metadata to a new directory",
+    )
 
     args = parser.parse_args()
 
     if args.batch_size < 1:
         parser.error("--batch-size must be positive")
+    
+    if args.output_dir is not None and args.output_dir.exists():
+        parser.error(f"--output-dir already exists: {args.output_dir}")
+
+    input_csv_sha256 = (
+        sha256_file(VALIDATED_CSV_PATH)
+        if args.output_dir is not None
+        else None
+    )
 
     # Load the full validated dataset.
     variant_dataset = CYP2C19MissenseDataset(VALIDATED_CSV_PATH)
@@ -231,10 +315,14 @@ def main():
     print("Execution device:", execution_device)
 
     # Load pretrained ESM-2.
-    esm2_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    esm2_tokenizer = AutoTokenizer.from_pretrained(
+        MODEL_NAME,
+        revision=MODEL_REVISION,
+    )
 
     esm2_model = AutoModel.from_pretrained(
         MODEL_NAME,
+        revision=MODEL_REVISION,
         add_pooling_layer=False,
     ).to(execution_device)
 
@@ -347,7 +435,18 @@ def main():
         )
 
         print("Batch-size consistency: PASS")
-
+    
+    if args.output_dir is not None:
+        save_embedding_artifacts(
+            output_dir=args.output_dir,
+            variant_ids=processed_variant_ids,
+            abundance_scores=experimental_abundance_scores,
+            variant_embeddings=complete_variant_embeddings,
+            input_csv_sha256=input_csv_sha256,
+            execution_device=execution_device,
+            batch_size=args.batch_size,
+        )
+        print("Saved embedding artifacts:", args.output_dir)
 
 if __name__ == "__main__":
     main()

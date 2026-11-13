@@ -1,0 +1,23 @@
+{
+  "created_at_utc": "2026-11-13T22:12:36.243147+00:00",
+  "dataset_accession": "urn:mavedb:00001199-a-1",
+  "validated_csv_sha256": "fac5d12cd494341cfbb7772da6e2c7bd69694d6c118bb0257828a1a2ed52f002",
+  "model_id": "facebook/esm2_t6_8M_UR50D",
+  "model_and_tokenizer_revision": "c731040fcd8d73dceaa04b0a8e6329b345b0f5df",
+  "pooling": "final_hidden_state_mean_over_residue_tokens",
+  "embedding_shape": [
+    7830,
+    320
+  ],
+  "embedding_dtype": "float32",
+  "batch_size": 8,
+  "device": "cuda",
+  "gpu_name": "NVIDIA GeForce RTX 5090",
+  "pytorch_version": "2.15.0+cu132",
+  "pytorch_cuda_build": "13.2",
+  "transformers_version": "5.23.0",
+  "artifact_sha256": {
+    "cyp2c19_esm2_embeddings.npy": "e27a70bef0add552240c630e8589a7f1a0bda0bd9aa3213c4c692fa9e6acdf56",
+    "cyp2c19_embedding_metadata.csv": "f1cc3a34f8c8c2f86cc14e8c46e9ceccf06326c616bdc2f53237bcc26cfb532c"
+  }
+}
