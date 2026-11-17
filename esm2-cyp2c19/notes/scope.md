@@ -3,7 +3,6 @@
 **Project:** ESM-2 / CYP2C19 Scientific ML Lifecycle  
 **Repository:** `scientific-ai-labs` (existing repository, project at root)  
 **Project type:** End-to-end ML engineering  
-**Primary role alignment:** ML Infrastructure Engineer, AI Platform Engineer, Scientific AI Platform Engineer  
 **Scope:** One dataset, one pretrained model family, one scientific prediction task, one evolving engineering system.
 
 ---

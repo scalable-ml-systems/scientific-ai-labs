@@ -1,5 +1,7 @@
 # Scientific ML Lifecycle Engineering — ESM-2/CYP2C19
 
+## Applied Scientific ML — ESM‑2 for CYP2C19 Abundance Prediction
+
 Build a reproducible scientific ML workflow that starts with an existing pretrained protein model and experimental data, then progresses through model adaptation, evaluation, benchmarking, governance and deployment.
 
 **Scientific question:**
